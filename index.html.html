@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>空間テキスト AR</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Zen+Kaku+Gothic+New:wght@400;700;900&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif;
+            overflow: hidden;
+            background: #000;
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+        }
+
+        #video-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #camera-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(1);
+        }
+
+        #ar-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: all;
+            cursor: crosshair;
+        }
+        
+        #ar-canvas.view-mode {
+            pointer-events: none;
+        }
+
+        #ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        #top-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+            padding: 15px 20px;
+            pointer-events: all;
+        }
+
+        #info {
+            color: #fff;
+            font-size: 12px;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        #location-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4ade80;
+            box-shadow: 0 0 8px #4ade80;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        #bottom-controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            background: linear-gradient(0deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
+            pointer-events: all;
+        }
+
+        #input-container {
+            max-width: 500px;
+            margin: 0 auto;
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        #message-input {
+            flex: 1;
+            padding: 12px 18px;
+            border: 2px solid rgba(255,255,255,0.2);
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 25px;
+            color: #fff;
+            font-size: 15px;
+            font-family: 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        #message-input:focus {
+            border-color: #f59e0b;
+            background: rgba(0,0,0,0.8);
+            box-shadow: 0 0 20px rgba(245,158,11,0.3);
+        }
+
+        #message-input::placeholder {
+            color: rgba(255,255,255,0.5);
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif;
+        }
+
+        #post-btn {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: #000;
+            box-shadow: 0 4px 15px rgba(245,158,11,0.4);
+        }
+
+        #post-btn:active {
+            transform: scale(0.95);
+        }
+
+        #post-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #messages-list {
+            max-width: 500px;
+            margin: 0 auto 15px;
+            max-height: 120px;
+            overflow-y: auto;
+            padding: 0 5px;
+        }
+
+        .message-item {
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 12px;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            color: #fff;
+            font-size: 13px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-text {
+            font-weight: 700;
+            margin-bottom: 3px;
+            color: #fbbf24;
+        }
+
+        .message-meta {
+            font-size: 10px;
+            color: rgba(255,255,255,0.6);
+        }
+
+        #start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a1a 0%, #000 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            pointer-events: all;
+        }
+
+        #start-screen.hidden {
+            display: none;
+        }
+
+        .logo {
+            font-size: 42px;
+            font-weight: 900;
+            background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 15px;
+            text-align: center;
+            line-height: 1.2;
+        }
+
+        .subtitle {
+            color: rgba(255,255,255,0.7);
+            font-size: 15px;
+            margin-bottom: 35px;
+            text-align: center;
+            max-width: 300px;
+        }
+
+        #start-btn {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: #000;
+            padding: 16px 35px;
+            font-size: 16px;
+            box-shadow: 0 8px 30px rgba(245,158,11,0.4);
+        }
+
+        #start-btn:active {
+            transform: scale(0.95);
+        }
+
+        #permission-btn {
+            background: rgba(59, 130, 246, 0.9);
+            color: #fff;
+            padding: 12px 25px;
+            font-size: 14px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        #permission-btn:active {
+            transform: scale(0.95);
+        }
+
+        .warning {
+            margin-top: 25px;
+            padding: 12px 18px;
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.3);
+            border-radius: 12px;
+            color: #fca5a5;
+            font-size: 12px;
+            max-width: 350px;
+            text-align: center;
+        }
+
+        .https-warning {
+            background: rgba(245,158,11,0.1);
+            border: 1px solid rgba(245,158,11,0.3);
+            color: #fbbf24;
+            margin-top: 15px;
+            font-weight: 700;
+        }
+
+        #error-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(239,68,68,0.95);
+            color: #fff;
+            padding: 20px 30px;
+            border-radius: 15px;
+            font-size: 14px;
+            text-align: center;
+            max-width: 80%;
+            z-index: 2000;
+            display: none;
+        }
+
+        #messages-list::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        #messages-list::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+        }
+
+        #messages-list::-webkit-scrollbar-thumb {
+            background: rgba(245,158,11,0.5);
+            border-radius: 2px;
+        }
+
+        .debug-info {
+            position: fixed;
+            bottom: 180px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            color: #0f0;
+            padding: 8px;
+            font-size: 10px;
+            font-family: monospace;
+            border-radius: 5px;
+            max-width: 90%;
+            z-index: 4;
+            pointer-events: none;
+        }
+
+        #mode-toggle {
+            position: absolute;
+            top: 60px;
+            right: 20px;
+            display: flex;
+            gap: 8px;
+            pointer-events: all;
+        }
+
+        .mode-btn {
+            padding: 8px 15px;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 20px;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif;
+        }
+
+        .mode-btn.active {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            border-color: #f59e0b;
+            color: #000;
+        }
+
+        #tap-indicator {
+            position: fixed;
+            width: 60px;
+            height: 60px;
+            border: 3px solid #f59e0b;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 5;
+            display: none;
+            animation: tapPulse 0.5s ease-out;
+        }
+
+        @keyframes tapPulse {
+            0% {
+                transform: scale(0.5);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        #placement-guide {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            pointer-events: none;
+            z-index: 5;
+            display: none;
+        }
+
+        #placement-guide::before,
+        #placement-guide::after {
+            content: '';
+            position: absolute;
+            background: #f59e0b;
+        }
+
+        #placement-guide::before {
+            width: 2px;
+            height: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        #placement-guide::after {
+            width: 100%;
+            height: 2px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        #placement-guide.active {
+            display: block;
+        }
+
+        .distance-slider-container {
+            position: absolute;
+            bottom: 160px;
+            left: 20px;
+            right: 20px;
+            display: none;
+            pointer-events: all;
+        }
+
+        .distance-slider-container.active {
+            display: block;
+        }
+
+        .slider-label {
+            color: #fff;
+            font-size: 14px;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 8px;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(10px);
+            padding: 8px;
+            border-radius: 10px;
+        }
+
+        #distance-slider {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255,255,255,0.2);
+            outline: none;
+            border-radius: 3px;
+        }
+
+        #distance-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 25px;
+            height: 25px;
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            cursor: pointer;
+            border-radius: 50%;
+            box-shadow: 0 2px 10px rgba(245,158,11,0.5);
+        }
+
+        #distance-slider::-moz-range-thumb {
+            width: 25px;
+            height: 25px;
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            cursor: pointer;
+            border-radius: 50%;
+            border: none;
+            box-shadow: 0 2px 10px rgba(245,158,11,0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="start-screen">
+        <div class="logo">空間テキスト<br>AR</div>
+        <div class="subtitle">現実世界にメッセージを残そう</div>
+        <button id="start-btn" class="btn">ARを開始</button>
+        <button id="permission-btn" class="btn">カメラ権限を許可</button>
+        <div class="warning">
+            ⚠️ カメラと位置情報へのアクセスが必要です<br>
+            <small>Chromeの場合、アドレスバー横のカメラアイコンで許可してください</small>
+        </div>
+        <div class="warning https-warning" id="https-warning" style="display: none;">
+            🔒 HTTPSでアクセスしてください<br>
+            カメラはHTTPSでのみ動作します
+        </div>
+    </div>
+
+    <div id="video-container">
+        <video id="camera-video" autoplay playsinline muted></video>
+    </div>
+
+    <canvas id="ar-canvas"></canvas>
+
+    <div id="ui-overlay">
+        <div id="top-bar">
+            <div id="info">
+                <div id="location-info">
+                    <div class="status-dot"></div>
+                    <span id="location-text">位置情報取得中...</span>
+                </div>
+                <div id="message-count">0件</div>
+            </div>
+        </div>
+
+        <div id="mode-toggle">
+            <button class="mode-btn active" data-mode="view">👁️ 表示</button>
+            <button class="mode-btn" data-mode="place">✏️ 配置</button>
+        </div>
+
+        <div id="bottom-controls">
+            <div class="distance-slider-container">
+                <div class="slider-label">配置距離: <span id="distance-value">10</span>m</div>
+                <input type="range" id="distance-slider" min="1" max="50" value="10" step="1">
+            </div>
+            <div id="messages-list"></div>
+            <div id="input-container">
+                <input type="text" id="message-input" placeholder="空間にメッセージを書き込む..." maxlength="50">
+                <button id="post-btn" class="btn">投稿</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="error-message"></div>
+    <div class="debug-info" id="debug-info"></div>
+    <div id="tap-indicator"></div>
+    <div id="placement-guide"></div>
+
+    <script>
+        let userLocation = { lat: 0, lng: 0, accuracy: 0 };
+        let messages = [];
+        let watchId = null;
+        let videoStream = null;
+        let canvas, ctx;
+        let deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
+        let currentMode = 'view';
+        let placementDistance = 10;
+        let pendingPlacement = null;
+
+        // HTTPSチェック
+        window.addEventListener('load', () => {
+            const isHTTPS = window.location.protocol === 'https:' || 
+                           window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1';
+            
+            if (!isHTTPS) {
+                document.getElementById('https-warning').style.display = 'block';
+                debug('WARNING: Not using HTTPS - camera may not work');
+            }
+
+            // MediaDevicesサポートチェック
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showError('このブラウザはカメラに対応していません');
+                debug('ERROR: mediaDevices not supported');
+            }
+        });
+
+        // デバッグ情報表示
+        function debug(message) {
+            const debugEl = document.getElementById('debug-info');
+            debugEl.innerHTML += message + '<br>';
+            console.log(message);
+        }
+
+        // エラー表示
+        function showError(message) {
+            const errorEl = document.getElementById('error-message');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+            setTimeout(() => {
+                errorEl.style.display = 'none';
+            }, 5000);
+        }
+
+        // ローカルストレージからメッセージを読み込む
+        function loadMessages() {
+            const stored = localStorage.getItem('arMessages');
+            if (stored) {
+                try {
+                    messages = JSON.parse(stored);
+                    debug(`Loaded ${messages.length} messages`);
+                } catch (e) {
+                    debug('Error loading messages: ' + e.message);
+                    messages = [];
+                }
+            }
+            updateMessagesList();
+            updateMessageCount();
+        }
+
+        // メッセージを保存
+        function saveMessages() {
+            try {
+                localStorage.setItem('arMessages', JSON.stringify(messages));
+                debug('Messages saved');
+            } catch (e) {
+                debug('Error saving messages: ' + e.message);
+            }
+        }
+
+        // 距離計算
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                    Math.cos(φ1) * Math.cos(φ2) *
+                    Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            return R * c;
+        }
+
+        // 新しい座標を計算（距離と方位から）
+        function calculateNewCoordinates(lat, lon, bearing, distance) {
+            const R = 6371e3; // 地球の半径（メートル）
+            const φ1 = lat * Math.PI / 180;
+            const λ1 = lon * Math.PI / 180;
+            const θ = bearing * Math.PI / 180;
+
+            const φ2 = Math.asin(
+                Math.sin(φ1) * Math.cos(distance / R) +
+                Math.cos(φ1) * Math.sin(distance / R) * Math.cos(θ)
+            );
+
+            const λ2 = λ1 + Math.atan2(
+                Math.sin(θ) * Math.sin(distance / R) * Math.cos(φ1),
+                Math.cos(distance / R) - Math.sin(φ1) * Math.sin(φ2)
+            );
+
+            return {
+                lat: φ2 * 180 / Math.PI,
+                lng: λ2 * 180 / Math.PI
+            };
+        }
+
+        // 方位角を計算
+        function calculateBearing(lat1, lon1, lat2, lon2) {
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const y = Math.sin(Δλ) * Math.cos(φ2);
+            const x = Math.cos(φ1) * Math.sin(φ2) -
+                    Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+            const θ = Math.atan2(y, x);
+
+            return (θ * 180 / Math.PI + 360) % 360;
+        }
+
+        // Canvas上にテキストを描画
+        function drawARTexts() {
+            if (!ctx) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 配置モードの場合、配置予定位置を表示
+            if (currentMode === 'place' && pendingPlacement) {
+                const x = canvas.width / 2;
+                const y = canvas.height / 2;
+                const fontSize = 30;
+
+                // 配置予定のテキストをプレビュー表示
+                ctx.fillStyle = 'rgba(245, 158, 11, 0.3)';
+                ctx.fillRect(x - 150, y - fontSize - 10, 300, fontSize * 2 + 20);
+                
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x - 150, y - fontSize - 10, 300, fontSize * 2 + 20);
+
+                ctx.font = `bold ${fontSize}px "Zen Kaku Gothic New", sans-serif`;
+                ctx.fillStyle = '#fbbf24';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(pendingPlacement.text, x, y);
+                
+                ctx.font = `${fontSize * 0.5}px "Zen Kaku Gothic New", sans-serif`;
+                ctx.fillStyle = '#fff';
+                ctx.fillText(`${placementDistance}m先に配置`, x, y + fontSize);
+            }
+
+            const nearbyMessages = messages.filter(msg => {
+                const dist = calculateDistance(userLocation.lat, userLocation.lng, msg.lat, msg.lng);
+                return dist <= 100;
+            });
+
+            nearbyMessages.forEach((msg, index) => {
+                const distance = calculateDistance(
+                    userLocation.lat, userLocation.lng,
+                    msg.lat, msg.lng
+                );
+                const bearing = calculateBearing(
+                    userLocation.lat, userLocation.lng,
+                    msg.lat, msg.lng
+                );
+
+                // デバイスの向きを考慮した相対角度
+                const relativeBearing = (bearing - deviceOrientation.alpha + 360) % 360;
+                
+                // 視野角内かチェック（±60度）
+                let angle = relativeBearing;
+                if (angle > 180) angle -= 360;
+                
+                if (Math.abs(angle) <= 60) {
+                    // 画面上の位置を計算
+                    const x = canvas.width / 2 + (angle / 60) * (canvas.width / 2);
+                    
+                    // 距離に応じてY座標を調整（遠いほど上に）
+                    const baseY = canvas.height / 2;
+                    const yOffset = Math.min((distance / 100) * (canvas.height * 0.3), canvas.height * 0.3);
+                    const y = baseY - yOffset;
+
+                    // 距離に応じて動的にテキストサイズを変更
+                    // 1m以内 = 80px, 5m = 50px, 10m = 35px, 30m = 20px, 100m = 12px
+                    let fontSize;
+                    if (distance < 1) {
+                        fontSize = 80;
+                    } else if (distance < 5) {
+                        fontSize = 80 - (distance - 1) * 7.5; // 1-5m: 80px -> 50px
+                    } else if (distance < 10) {
+                        fontSize = 50 - (distance - 5) * 3; // 5-10m: 50px -> 35px
+                    } else if (distance < 30) {
+                        fontSize = 35 - (distance - 10) * 0.75; // 10-30m: 35px -> 20px
+                    } else {
+                        fontSize = Math.max(12, 20 - (distance - 30) * 0.1); // 30-100m: 20px -> 12px
+                    }
+                    
+                    // 背景のサイズも距離に応じて調整
+                    const bgWidth = fontSize * 5;
+                    const bgHeight = fontSize * 2.5;
+                    
+                    // 背景を描画（距離が近いほど濃く）
+                    const bgOpacity = Math.max(0.5, 0.9 - distance / 100);
+                    ctx.fillStyle = `rgba(0, 0, 0, ${bgOpacity})`;
+                    ctx.fillRect(x - bgWidth / 2, y - bgHeight / 2, bgWidth, bgHeight);
+                    
+                    // 枠線を描画（距離が近いほど明るく）
+                    const borderOpacity = Math.max(0.3, 0.8 - distance / 100);
+                    ctx.strokeStyle = `rgba(245, 158, 11, ${borderOpacity})`;
+                    ctx.lineWidth = Math.max(1, 3 - distance / 30);
+                    ctx.strokeRect(x - bgWidth / 2, y - bgHeight / 2, bgWidth, bgHeight);
+                    
+                    // テキストを描画
+                    ctx.font = `bold ${fontSize}px "Zen Kaku Gothic New", sans-serif`;
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(msg.text, x, y);
+                    
+                    // 距離を表示（テキストサイズに応じて調整）
+                    const distanceFontSize = fontSize * 0.4;
+                    ctx.font = `${distanceFontSize}px "Zen Kaku Gothic New", sans-serif`;
+                    ctx.fillStyle = '#fff';
+                    const distanceText = distance < 1 ? 
+                        `${Math.round(distance * 100)}cm` : 
+                        distance < 1000 ? `${Math.round(distance)}m` : 
+                        `${(distance / 1000).toFixed(1)}km`;
+                    ctx.fillText(distanceText, x, y + fontSize * 0.7);
+                }
+            });
+        }
+
+        // アニメーションループ
+        function animate() {
+            drawARTexts();
+            requestAnimationFrame(animate);
+        }
+
+        // カメラ起動
+        async function startCamera() {
+            try {
+                debug('Requesting camera...');
+                debug('User agent: ' + navigator.userAgent);
+                
+                // Chrome用の最適化された制約
+                let constraints = {
+                    audio: false,
+                    video: {
+                        facingMode: { exact: 'environment' },
+                        width: { min: 640, ideal: 1280, max: 1920 },
+                        height: { min: 480, ideal: 720, max: 1080 }
+                    }
+                };
+
+                try {
+                    videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    debug('Camera stream obtained with exact environment mode');
+                } catch (err) {
+                    debug('Exact environment failed: ' + err.message);
+                    
+                    // idealに変更して再試行
+                    constraints = {
+                        audio: false,
+                        video: {
+                            facingMode: { ideal: 'environment' },
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        }
+                    };
+                    
+                    try {
+                        videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                        debug('Camera stream obtained with ideal environment mode');
+                    } catch (err2) {
+                        debug('Ideal environment failed: ' + err2.message);
+                        
+                        // facingModeなしで再試行
+                        constraints = {
+                            audio: false,
+                            video: {
+                                width: { ideal: 1280 },
+                                height: { ideal: 720 }
+                            }
+                        };
+                        
+                        try {
+                            videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                            debug('Camera stream obtained without facingMode');
+                        } catch (err3) {
+                            debug('No facingMode failed: ' + err3.message);
+                            
+                            // 最もシンプルな制約
+                            constraints = {
+                                audio: false,
+                                video: true
+                            };
+                            
+                            videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                            debug('Camera stream obtained with basic video:true');
+                        }
+                    }
+                }
+
+                const video = document.getElementById('camera-video');
+                
+                // ビデオ要素の属性を設定
+                video.setAttribute('autoplay', '');
+                video.setAttribute('muted', '');
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
+                video.muted = true;
+                video.autoplay = true;
+                video.playsInline = true;
+                
+                video.srcObject = videoStream;
+                
+                debug('Video srcObject set, waiting for metadata...');
+                
+                // loadedmetadataイベントを待つ
+                return new Promise((resolve, reject) => {
+                    video.onloadedmetadata = () => {
+                        debug('Video metadata loaded');
+                        debug('Video dimensions: ' + video.videoWidth + 'x' + video.videoHeight);
+                        
+                        video.play().then(() => {
+                            debug('Video playing successfully');
+                            
+                            // Canvasのサイズを設定
+                            canvas = document.getElementById('ar-canvas');
+                            canvas.width = window.innerWidth;
+                            canvas.height = window.innerHeight;
+                            ctx = canvas.getContext('2d');
+                            
+                            debug('Canvas initialized: ' + canvas.width + 'x' + canvas.height);
+                            
+                            // アニメーション開始
+                            animate();
+                            
+                            resolve(true);
+                        }).catch(playErr => {
+                            debug('Video play error: ' + playErr.message);
+                            
+                            // 自動再生に失敗した場合、ユーザーインタラクションで再生
+                            setTimeout(() => {
+                                video.play().then(() => {
+                                    debug('Video playing after retry');
+                                    
+                                    canvas = document.getElementById('ar-canvas');
+                                    canvas.width = window.innerWidth;
+                                    canvas.height = window.innerHeight;
+                                    ctx = canvas.getContext('2d');
+                                    
+                                    animate();
+                                    resolve(true);
+                                }).catch(e => {
+                                    reject(new Error('Video play failed: ' + e.message));
+                                });
+                            }, 100);
+                        });
+                    };
+                    
+                    video.onerror = (err) => {
+                        debug('Video element error: ' + err);
+                        reject(new Error('Video element error'));
+                    };
+                    
+                    // タイムアウト設定（10秒）
+                    setTimeout(() => {
+                        if (!video.videoWidth) {
+                            reject(new Error('Video loading timeout'));
+                        }
+                    }, 10000);
+                });
+
+            } catch (error) {
+                debug('Camera error: ' + error.name + ' - ' + error.message);
+                
+                let errorMsg = 'カメラの起動に失敗しました。';
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    errorMsg += 'カメラの許可を確認してください。ブラウザの設定でカメラへのアクセスを許可してください。';
+                } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                    errorMsg += 'カメラが見つかりません。デバイスにカメラが接続されているか確認してください。';
+                } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+                    errorMsg += 'カメラが使用中の可能性があります。他のアプリを閉じてください。';
+                } else if (error.name === 'NotSupportedError' || error.name === 'TypeError') {
+                    errorMsg += 'HTTPSでアクセスする必要があります。';
+                } else if (error.name === 'OverconstrainedError') {
+                    errorMsg += 'カメラの設定が対応していません。';
+                } else {
+                    errorMsg += error.message;
+                }
+                
+                showError(errorMsg);
+                return false;
+            }
+        }
+
+        // 位置情報の監視開始
+        function startLocationTracking() {
+            if ('geolocation' in navigator) {
+                debug('Starting location tracking...');
+                watchId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude,
+                            accuracy: position.coords.accuracy
+                        };
+
+                        document.getElementById('location-text').textContent = 
+                            `${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`;
+
+                        updateMessagesList();
+                        updateMessageCount();
+                        
+                        debug(`Location: ${userLocation.lat}, ${userLocation.lng}`);
+                    },
+                    (error) => {
+                        debug('Location error: ' + error.message);
+                        document.getElementById('location-text').textContent = '位置情報エラー';
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        maximumAge: 0,
+                        timeout: 5000
+                    }
+                );
+            } else {
+                debug('Geolocation not supported');
+                showError('このブラウザは位置情報に対応していません');
+            }
+        }
+
+        // デバイスの向きを取得
+        function startOrientationTracking() {
+            if (window.DeviceOrientationEvent) {
+                debug('Starting orientation tracking...');
+                window.addEventListener('deviceorientation', (event) => {
+                    deviceOrientation = {
+                        alpha: event.alpha || 0,
+                        beta: event.beta || 0,
+                        gamma: event.gamma || 0
+                    };
+                });
+            } else {
+                debug('DeviceOrientation not supported');
+            }
+        }
+
+        // メッセージリストを更新
+        function updateMessagesList() {
+            const listEl = document.getElementById('messages-list');
+            
+            const sortedMessages = [...messages].sort((a, b) => {
+                const distA = calculateDistance(userLocation.lat, userLocation.lng, a.lat, a.lng);
+                const distB = calculateDistance(userLocation.lat, userLocation.lng, b.lat, b.lng);
+                return distA - distB;
+            });
+
+            const nearbyMessages = sortedMessages.filter(msg => {
+                const dist = calculateDistance(userLocation.lat, userLocation.lng, msg.lat, msg.lng);
+                return dist <= 100;
+            }).slice(0, 5);
+
+            listEl.innerHTML = nearbyMessages.map(msg => {
+                const distance = calculateDistance(userLocation.lat, userLocation.lng, msg.lat, msg.lng);
+                const distanceText = distance < 1000 ? `${Math.round(distance)}m` : `${(distance / 1000).toFixed(1)}km`;
+                return `
+                    <div class="message-item">
+                        <div class="message-text">${msg.text}</div>
+                        <div class="message-meta">${distanceText}先</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // メッセージ数を更新
+        function updateMessageCount() {
+            const nearbyCount = messages.filter(msg => {
+                const dist = calculateDistance(userLocation.lat, userLocation.lng, msg.lat, msg.lng);
+                return dist <= 100;
+            }).length;
+            document.getElementById('message-count').textContent = `${nearbyCount}件`;
+        }
+
+        // メッセージ投稿
+        function postMessage() {
+            const input = document.getElementById('message-input');
+            const text = input.value.trim();
+
+            if (!text) return;
+
+            if (userLocation.lat === 0 && userLocation.lng === 0) {
+                showError('位置情報を取得中です。少しお待ちください。');
+                return;
+            }
+
+            if (currentMode === 'place') {
+                // 配置モード: テキストを一時保存して配置待ち
+                pendingPlacement = { text: text };
+                input.value = '';
+                document.getElementById('placement-guide').classList.add('active');
+                showError('画面をタップして配置位置を指定してください');
+                debug('Placement mode: tap to place');
+            } else {
+                // 表示モード: 現在地に直接投稿
+                const newMessage = {
+                    text: text,
+                    lat: userLocation.lat,
+                    lng: userLocation.lng,
+                    timestamp: Date.now(),
+                    accuracy: userLocation.accuracy
+                };
+
+                messages.push(newMessage);
+                saveMessages();
+                updateMessagesList();
+                updateMessageCount();
+
+                input.value = '';
+                debug('Message posted at current location: ' + text);
+            }
+        }
+
+        // 開始ボタン
+        document.getElementById('start-btn').addEventListener('click', async () => {
+            debug('Start button clicked');
+            
+            const cameraStarted = await startCamera();
+            if (cameraStarted) {
+                document.getElementById('start-screen').classList.add('hidden');
+                loadMessages();
+                startLocationTracking();
+                startOrientationTracking();
+            } else {
+                debug('Camera failed to start, showing permission button');
+                document.getElementById('permission-btn').style.display = 'block';
+            }
+        });
+
+        // 権限ボタン（リトライ用）
+        document.getElementById('permission-btn').addEventListener('click', async () => {
+            debug('Permission button clicked');
+            
+            // まず権限状態を確認
+            try {
+                const result = await navigator.permissions.query({ name: 'camera' });
+                debug('Camera permission state: ' + result.state);
+                
+                if (result.state === 'denied') {
+                    showError('カメラの権限が拒否されています。ブラウザの設定から許可してください。');
+                    return;
+                }
+            } catch (e) {
+                debug('Permission query not supported: ' + e.message);
+            }
+            
+            const cameraStarted = await startCamera();
+            if (cameraStarted) {
+                document.getElementById('start-screen').classList.add('hidden');
+                loadMessages();
+                startLocationTracking();
+                startOrientationTracking();
+            }
+        });
+
+        // 投稿ボタン
+        document.getElementById('post-btn').addEventListener('click', postMessage);
+
+        // Enterキーで投稿
+        document.getElementById('message-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                postMessage();
+            }
+        });
+
+        // モード切替
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentMode = btn.dataset.mode;
+                
+                const canvas = document.getElementById('ar-canvas');
+                const sliderContainer = document.querySelector('.distance-slider-container');
+                
+                if (currentMode === 'view') {
+                    canvas.classList.add('view-mode');
+                    sliderContainer.classList.remove('active');
+                    document.getElementById('placement-guide').classList.remove('active');
+                    pendingPlacement = null;
+                    debug('Switched to view mode');
+                } else {
+                    canvas.classList.remove('view-mode');
+                    sliderContainer.classList.add('active');
+                    debug('Switched to place mode');
+                }
+            });
+        });
+
+        // 距離スライダー
+        document.getElementById('distance-slider').addEventListener('input', (e) => {
+            placementDistance = parseInt(e.target.value);
+            document.getElementById('distance-value').textContent = placementDistance;
+        });
+
+        // Canvas タップイベント
+        document.getElementById('ar-canvas').addEventListener('click', (e) => {
+            if (currentMode !== 'place' || !pendingPlacement) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // タップインジケーターを表示
+            const indicator = document.getElementById('tap-indicator');
+            indicator.style.left = e.clientX - 30 + 'px';
+            indicator.style.top = e.clientY - 30 + 'px';
+            indicator.style.display = 'block';
+            
+            setTimeout(() => {
+                indicator.style.display = 'none';
+            }, 500);
+
+            // 画面中心からの相対位置を計算
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const deltaX = x - centerX;
+            const deltaY = centerY - y;
+
+            // 角度を計算（デバイスの向きを基準）
+            const angle = Math.atan2(deltaX, canvas.height / 2) * (180 / Math.PI);
+            const bearing = (deviceOrientation.alpha + angle + 360) % 360;
+
+            // 新しい座標を計算
+            const newCoords = calculateNewCoordinates(
+                userLocation.lat,
+                userLocation.lng,
+                bearing,
+                placementDistance
+            );
+
+            // メッセージを作成
+            const newMessage = {
+                text: pendingPlacement.text,
+                lat: newCoords.lat,
+                lng: newCoords.lng,
+                timestamp: Date.now(),
+                accuracy: userLocation.accuracy
+            };
+
+            messages.push(newMessage);
+            saveMessages();
+            updateMessagesList();
+            updateMessageCount();
+
+            // リセット
+            pendingPlacement = null;
+            document.getElementById('placement-guide').classList.remove('active');
+            
+            debug(`Message placed at bearing ${bearing.toFixed(1)}°, distance ${placementDistance}m`);
+            debug(`New coords: ${newCoords.lat.toFixed(6)}, ${newCoords.lng.toFixed(6)}`);
+        });
+
+        // ウィンドウリサイズ対応
+        window.addEventListener('resize', () => {
+            if (canvas) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+        });
+    </script>
+</body>
+</html>
